@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#071c2c"><title>FADIL TRADING</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main id="landing" class="landing">
+    <nav><a class="brand" href="#">FADIL <span>TRADING</span></a><button class="text-button" data-action="show-login">تسجيل الدخول</button></nav>
+    <section class="hero">
+      <p class="eyebrow">منصة تعليم التداول الذكي</p><h1>FADIL <em>TRADING</em></h1>
+      <p class="tagline">لا يعتمد على الحظ بل على المنطق</p>
+      <p class="intro">تعلم قراءة السوق، بناء الاستراتيجية، وإدارة رأس المال بخطوات واضحة ومدروسة.</p>
+      <button class="primary" data-action="show-login">ابدأ الآن <span>←</span></button>
+    </section>
+    <section class="features" aria-label="مميزات المنصة">
+      <article><i>◈</i><h2>تعلم منظم</h2><p>مسارات ودروس مرئية مرتبة.</p></article>
+      <article><i>↗</i><h2>تحليل عملي</h2><p>أدوات تساعدك على الفهم لا التخمين.</p></article>
+      <article><i>✓</i><h2>مسار واضح</h2><p>تعلّم بخطوات منظمة ومدروسة.</p></article>
+    </section>
+  </main>
+  <section id="login" class="auth hidden">
+    <form id="login-form" class="card"><button type="button" class="close" data-action="hide-login">×</button><p class="eyebrow">مرحباً بعودتك</p><h2>الدخول إلى المنصة</h2><label>اسم المستخدم أو البريد<input name="identity" required autocomplete="username"></label><label>كلمة المرور<input name="password" type="password" minlength="6" required autocomplete="current-password"></label><button class="primary" type="submit">تسجيل الدخول</button><p id="login-error" class="error" role="alert"></p><p class="muted">ليس لديك حساب؟ <button type="button" class="link" data-action="show-register">أنشئ حساباً</button></p></form>
+    <form id="register-form" class="card hidden"><button type="button" class="close" data-action="hide-login">×</button><p class="eyebrow">انضم إلينا</p><h2>إنشاء حساب طالب</h2><label>اسم المستخدم<input name="username" required minlength="3"></label><label>البريد الإلكتروني (اختياري)<input name="email" type="email"></label><label>كلمة المرور<input name="password" type="password" minlength="6" required></label><button class="primary" type="submit">إنشاء الحساب</button><p id="register-error" class="error" role="alert"></p><p class="muted">لديك حساب؟ <button type="button" class="link" data-action="show-login-form">سجّل الدخول</button></p></form>
+  </section>
+  <section id="app" class="app hidden"><header><a class="brand" href="#">FADIL <span>TRADING</span></a><div><span id="welcome"></span><button id="logout" class="text-button">خروج</button></div></header><div id="student-view" class="dashboard"><h1>أهلاً بك في مسارك التعليمي</h1><div id="courses" class="course-grid"></div><div id="course-detail"></div><section class="payment card-lite"><h2>الاشتراك</h2><p class="notice">التحويل عن طريق <strong>ماستر كارد</strong> — السعر: <strong dir="ltr">$100</strong></p><p>أدخل مرجع التحويل لإرسال طلبك للمراجعة. بعد موافقة الإدارة تُفتح الكورسات المدفوعة.</p><form id="subscription-form"><input name="transferReference" placeholder="رقم أو مرجع التحويل" required><button class="secondary">إرسال طلب الاشتراك</button></form></section><section id="news" class="card-lite"></section><section class="support card-lite"><h2>الدعم الفني</h2><form id="ticket-form"><input name="subject" placeholder="عنوان المشكلة" required><textarea name="message" placeholder="كيف يمكننا مساعدتك؟" required></textarea><button class="secondary">فتح تذكرة</button></form><div id="tickets"></div></section></div><div id="admin-view" class="dashboard hidden"><h1>لوحة تحكم الإدارة</h1><nav class="tabs"><button data-tab="students">الطلاب</button><button data-tab="finance">طلبات الاشتراك</button><button data-tab="support">الدعم الفني</button><button data-tab="content">المحتوى والرفع</button></nav><section id="admin-content" class="admin-panel"></section></div></section>
+  <template id="row-template"><tr></tr></template>
+  <script src="/app.js" defer></script>
+</body></html>
