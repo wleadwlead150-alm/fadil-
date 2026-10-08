@@ -252,31 +252,21 @@ let databaseConnectionPromise;
 async function connectDatabase() {
   if (mongoose.connection.readyState === 1) return mongoose.connection;
   if (databaseConnectionPromise) return databaseConnectionPromise;
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  const mongoUri = process.env.MONGO_URI;
   if (!mongoUri) throw new Error('MONGO_URI is required. Set it in .env before starting the server.');
-  databaseConnectionPromise = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 })
-    .then(async connection => { console.log('MongoDB connected'); await Promise.all([seedAdmin(), ensureFreeCourse()]); return connection; })
+  databaseConnectionPromise = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 30000, maxPoolSize: 10, minPoolSize: 1 })
+    .then(async connection => { console.log('✓ MongoDB connected'); await Promise.all([seedAdmin(), ensureFreeCourse()]); return connection; })
     .catch(error => { databaseConnectionPromise = undefined; throw error; });
   return databaseConnectionPromise;
 }
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
-async function seedDefaultAdmin() {
-  await Promise.all([seedAdmin(), ensureFreeCourse()]);
-}
 async function startServer() {
   try {
-    if (MONGO_URI) {
-      await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 30000 });
-      console.log('✓ MongoDB connected');
-      await seedDefaultAdmin();
-    } else {
-      console.warn('⚠ MONGO_URI is not set. The interface will run, but database features require configuration.');
-    }
+    await connectDatabase();
+    app.listen(PORT, () => console.log(`✓ FADIL TRADING is running at http://localhost:${PORT}`));
   } catch (error) {
-    console.warn(`⚠ MongoDB connection error: ${error.message}`);
+    console.error(`MongoDB startup failed: ${error.message}`);
+    process.exit(1);
   }
-
-  app.listen(PORT, () => console.log(`✓ FADIL TRADING is running at http://localhost:${PORT}`));
 }
 
 if (require.main === module) startServer();
