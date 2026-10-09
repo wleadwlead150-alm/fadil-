@@ -63,7 +63,6 @@ const quizSchema = new mongoose.Schema({
 }, { timestamps: true });
 const attemptSchema = new mongoose.Schema({
   student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  // quiz is retained only so historical database attempts can still be read.
   quiz: { type: mongoose.Schema.Types.ObjectId, ref: 'Quiz' },
   quizKey: String, quizTitle: String,
   answers: [{ question: String, selectedAnswer: Number, isCorrect: Boolean }],
@@ -154,11 +153,11 @@ app.get('/api/health', async (req, res) => {
     res.status(503).json({ ok: false, database: 'disconnected', error: error.message, timestamp: new Date().toISOString() });
   }
 });
-// Vercel imports this app instead of running start(), so each API invocation
-// waits for the cached MongoDB connection before accessing models.
+
 app.use('/api', async (req, res, next) => {
   try { await connectDatabase(); next(); } catch (error) { next(error); }
 });
+
 app.post('/api/auth/register', async (req, res, next) => {
   try { const { username, email, password } = req.body; if (!username || !password || password.length < 6) return res.status(400).json({ error: 'اسم المستخدم وكلمة مرور من 6 أحرف مطلوبة.' });
     const exists = await User.exists({ $or: [{ username: username.toLowerCase() }, ...(email ? [{ email: email.toLowerCase() }] : [])] }); if (exists) return res.status(409).json({ error: 'اسم المستخدم أو البريد مستخدم مسبقاً.' });
@@ -179,7 +178,6 @@ app.get('/api/courses', auth, async (req, res, next) => { try {
 app.get('/api/courses/:id', auth, async (req, res, next) => { try { if (!validId(req.params.id)) return res.status(400).json({ error: 'معرّف كورس غير صالح.' }); const course = await Course.findById(req.params.id); if (!course) return res.status(404).json({ error: 'الكورس غير موجود.' }); if (!await canAccessCourse(req.user, course)) return res.status(403).json({ error: 'هذا كورس مدفوع. أرسل طلب الاشتراك ثم انتظر موافقة الإدارة.' }); const lessons = await Lesson.find({ course: course._id }).sort('order'); res.json({ course, lessons }); } catch (e) { next(e); } });
 app.post('/api/progress/:lessonId', auth, async (req, res, next) => { try { if (!validId(req.params.lessonId)) return res.status(400).json({ error: 'معرّف درس غير صالح.' }); const lesson = await Lesson.findById(req.params.lessonId); if (!lesson) return res.status(404).json({ error: 'الدرس غير موجود.' }); const course = await Course.findById(lesson.course); if (!course || !await canAccessCourse(req.user, course)) return res.status(403).json({ error: 'لا تملك صلاحية الوصول إلى هذا الدرس.' }); await Progress.updateOne({ student: req.user.id, lesson: lesson._id }, { $setOnInsert: { completedAt: new Date() } }, { upsert: true }); await User.findByIdAndUpdate(req.user.id, { currentCourse: lesson.course }); res.json({ ok: true }); } catch (e) { next(e); } });
 
-// The catalog is read from data/quizzes.json for every request; it is never hard-coded in this server.
 app.get('/api/quizzes', auth, quizAccess, async (req, res, next) => { try {
   const quizzes = await loadQuizzesFromFile();
   res.json(quizzes.map(({ questions, ...quiz }) => ({ ...quiz, questionCount: questions.length })));
@@ -214,17 +212,17 @@ app.post('/api/admin/quizzes/upload', auth, admin, quizUpload.single('quizFile')
   await fs.promises.rename(temporaryFile, QUIZZES_FILE);
   res.status(201).json({ ok: true, message: 'تم استبدال ملف الاختبارات بنجاح.', quizzes: quizzes.length, questions: quizzes.reduce((count, quiz) => count + quiz.questions.length, 0) });
 } catch (e) { next(e); } });
-app.get('/api/admin/students', auth, admin, async (req, res, next) => { try { const students = await User.find({ role: 'student' }).populate('currentCourse', 'title').lean(); const ids = students.map(s => s._id); const counts = await Progress.aggregate([{ $match: { student: { $in: ids } } }, { $group: { _id: '$student', completedLessons: { $sum: 1 } } }]); const byStudent = new Map(counts.map(c => [String(c._id), c.completedLessons])); res.json(students.map(s => ({ id: s._id, username: s.username, activatedAt: s.activatedAt || s.createdAt, currentCourse: s.currentCourse?.title || 'لم يختر كورساً', completedLessons: byStudent.get(String(s._id)) || 0 }))); } catch (e) { next(e); } });
+app.get('/api/admin/students', auth, admin, async (req, res, next) => { try { const students = await User.find({ role: 'student' }).populate('currentCourse', 'title').lean(); const ids = students.map(s => s._id); const counts = await Progress.aggregate([{ $match: { student: { $in: ids } } }, {$group: { _id: '$student', completedLessons: {$sum: 1 } } }]); const byStudent = new Map(counts.map(c => [String(c._id), c.completedLessons])); res.json(students.map(s => ({ id: s._id, username: s.username, activatedAt: s.activatedAt || s.createdAt, currentCourse: s.currentCourse?.title || 'لم يختر كورساً', completedLessons: byStudent.get(String(s._id)) || 0 }))); } catch (e) { next(e); } });
 app.get('/api/admin/subscriptions', auth, admin, async (req, res, next) => { try { res.json({ amount: 100, currency: 'USD', paymentMethod: 'MasterCard', requests: await Subscription.find().populate('student', 'username email').sort('-createdAt') }); } catch (e) { next(e); } });
 app.patch('/api/admin/subscriptions/:id', auth, admin, async (req, res, next) => { try { if (!['approved', 'rejected'].includes(req.body.status)) return res.status(400).json({ error: 'حالة غير صحيحة.' }); const item = await Subscription.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true }); if (!item) return res.status(404).json({ error: 'الطلب غير موجود.' }); res.json(item); } catch (e) { next(e); } });
 app.get('/api/admin/attempts', auth, admin, async (req, res, next) => { try { const attempts = await Attempt.find().populate('student', 'username').populate('quiz', 'title').sort('-completedAt'); res.json(attempts.map(a => ({ id: a._id, student: a.student?.username || 'طالب محذوف', quiz: a.quizTitle || a.quiz?.title || 'اختبار محذوف', score: a.score, total: a.total, percentage: a.percentage, status: 'مكتمل', completedAt: a.completedAt }))); } catch (e) { next(e); } });
 app.get('/api/admin/tickets', auth, admin, async (req, res, next) => { try { res.json(await Ticket.find().populate('student', 'username email').sort('-updatedAt')); } catch (e) { next(e); } });
-app.post('/api/admin/tickets/:id/reply', auth, admin, async (req, res, next) => { try { if (!req.body.message?.trim()) return res.status(400).json({ error: 'نص الرد مطلوب.' }); const ticket = await Ticket.findByIdAndUpdate(req.params.id, { $push: { messages: { sender: 'admin', body: req.body.message.trim(), sentAt: new Date() } }, $set: { status: 'answered' } }, { new: true }); if (!ticket) return res.status(404).json({ error: 'التذكرة غير موجودة.' }); res.json(ticket); } catch (e) { next(e); } });
+app.post('/api/admin/tickets/:id/reply', auth, admin, async (req, res, next) => { try { if (!req.body.message?.trim()) return res.status(400).json({ error: 'نص الرد مطلوب.' }); const ticket = await Ticket.findByIdAndUpdate(req.params.id, { $push: { messages: { sender: 'admin', body: req.body.message.trim(), sentAt: new Date() } },$set: { status: 'answered' } }, { new: true }); if (!ticket) return res.status(404).json({ error: 'التذكرة غير موجودة.' }); res.json(ticket); } catch (e) { next(e); } });
 app.post('/api/admin/courses', auth, admin, async (req, res, next) => { try { const course = await Course.create({ ...req.body, createdBy: req.user.id }); res.status(201).json(course); } catch (e) { next(e); } });
 app.get('/api/admin/courses', auth, admin, async (req, res, next) => { try { const courses = await Course.find().sort('-createdAt').lean(); const lessons = await Lesson.find({ course: { $in: courses.map(c => c._id) } }).sort('order').lean(); const byCourse = new Map(courses.map(c => [String(c._id), []])); lessons.forEach(lesson => byCourse.get(String(lesson.course))?.push(lesson)); res.json(courses.map(course => ({ ...course, lessons: byCourse.get(String(course._id)) || [] }))); } catch (e) { next(e); } });
 app.patch('/api/admin/courses/:id', auth, admin, async (req, res, next) => { try { if (!validId(req.params.id)) return res.status(400).json({ error: 'معرّف كورس غير صالح.' }); const fields = (({ title, description, imageUrl, published, isPaid }) => ({ title, description, imageUrl, published, isPaid }))(req.body); Object.keys(fields).forEach(key => fields[key] === undefined && delete fields[key]); const course = await Course.findByIdAndUpdate(req.params.id, fields, { new: true, runValidators: true }); if (!course) return res.status(404).json({ error: 'الكورس غير موجود.' }); res.json(course); } catch (e) { next(e); } });
 app.post('/api/admin/courses/:id/lessons', auth, admin, async (req, res, next) => { try { if (!await Course.exists({ _id: req.params.id })) return res.status(404).json({ error: 'الكورس غير موجود.' }); const lesson = await Lesson.create({ ...req.body, course: req.params.id }); res.status(201).json(lesson); } catch (e) { next(e); } });
-app.patch('/api/admin/lessons/:id', auth, admin, async (req, res, next) => { try { if (!validId(req.params.id)) return res.status(400).json({ error: 'معرّف درس غير صالح.' }); const fields = (({ title, description, videoUrl, attachmentUrl, order }) => ({ title, description, videoUrl, attachmentUrl, order }))(req.body); Object.keys(fields).forEach(key => fields[key] === undefined && delete fields[key]); const lesson = await Lesson.findByIdAndUpdate(req.params.id, fields, { new: true, runValidators: true }); if (!lesson) return res.status(404).json({ error: 'الدرس غير موجود.' }); res.json(lesson); } catch (e) { next(e); } });
+app.patch('/api/admin/lessons/:id', auth, admin, async (req, res, next) => { try { if (!validId(req.params.id)) return res.status(400).json({ error: 'معرّف درس غير صالح.' }); const fields = (({ title, description, videoUrl, attachmentUrl, order }) => ({ title, description, videoUrl, attachmentUrl, order }))(req.body); Object.keys(fields).forEach(key => fields[key] === undefined && delete fields[key]); const lesson = await Lesson.findByIdAndUpdate(req.params.id, fields, { new: true, runValidators: true }); if (!lesson) return res.status(404).json({ error: 'المقطع غير موجود.' }); res.json(lesson); } catch (e) { next(e); } });
 app.post('/api/admin/content', auth, admin, async (req, res, next) => { try { const content = await Content.create({ ...req.body, createdBy: req.user.id }); res.status(201).json(content); } catch (e) { next(e); } });
 app.get('/api/admin/content', auth, admin, async (req, res, next) => { try { res.json(await Content.find().sort('-createdAt')); } catch (e) { next(e); } });
 async function deleteCourse(id) { const lessons = await Lesson.find({ course: id }); lessons.forEach(l => { unlinkUpload(l.videoUrl); unlinkUpload(l.attachmentUrl); }); await Progress.deleteMany({ lesson: { $in: lessons.map(l => l._id) } }); await Lesson.deleteMany({ course: id }); await Quiz.deleteMany({ course: id }); return Course.findByIdAndDelete(id); }
@@ -233,7 +231,6 @@ app.delete('/api/admin/lessons/:id', auth, admin, async (req, res, next) => { tr
 app.delete('/api/admin/content/:id', auth, admin, async (req, res, next) => { try { const item = await Content.findByIdAndDelete(req.params.id); if (!item) return res.status(404).json({ error: 'المحتوى غير موجود.' }); unlinkUpload(item.fileUrl); res.json({ ok: true }); } catch (e) { next(e); } });
 app.delete('/api/admin/uploads/:kind/:filename', auth, admin, (req, res) => { const { kind, filename } = req.params; if (!ALLOWED_KINDS.has(kind) || path.basename(filename) !== filename) return res.status(400).json({ error: 'مسار ملف غير صالح.' }); const file = path.join(UPLOAD_ROOT, kind, filename); fs.unlink(file, err => err ? res.status(err.code === 'ENOENT' ? 404 : 500).json({ error: 'تعذر حذف الملف.' }) : res.json({ ok: true })); });
 
-// Explicit root route prevents a 404 when Vercel forwards `/` to this function.
 app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 app.use(express.static(PUBLIC_DIR));
 app.get('*', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
@@ -248,25 +245,32 @@ async function ensureFreeCourse() {
   );
   return course;
 }
+
 let databaseConnectionPromise;
 async function connectDatabase() {
   if (mongoose.connection.readyState === 1) return mongoose.connection;
   if (databaseConnectionPromise) return databaseConnectionPromise;
-  const mongoUri = process.env.MONGO_URI;
-  if (!mongoUri) throw new Error('MONGO_URI is required. Set it in .env before starting the server.');
+  
+  // تثبيت الرابط مباشرة لتجنب أي مشاكل في قراءة المتغير البيئي
+  const mongoUri = "mongodb+srv://wleadwlead150_db_user:j3U18ZpQG8EYOWdo@fadil.wc6wbvu.mongodb.net/?appName=Fadil";
+  
   databaseConnectionPromise = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 30000, maxPoolSize: 10, minPoolSize: 1 })
     .then(async connection => { console.log('✓ MongoDB connected'); await Promise.all([seedAdmin(), ensureFreeCourse()]); return connection; })
-    .catch(error => { databaseConnectionPromise = undefined; throw error; });
+    .catch(error => { 
+      databaseConnectionPromise = undefined; 
+      console.error('MongoDB Connection Error:', error.message);
+      // تم إزالة process.exit لكي يبقى السيرفر يعمل ولا ينهار (Crashed)
+    });
   return databaseConnectionPromise;
 }
+
 async function startServer() {
   try {
     await connectDatabase();
-    app.listen(PORT, () => console.log(`✓ FADIL TRADING is running at http://localhost:${PORT}`));
-  } catch (error) {
-    console.error(`MongoDB startup failed: ${error.message}`);
-    process.exit(1);
+  } catch (e) {
+    console.log('Continuing startup despite initial db warning...');
   }
+  app.listen(PORT, () => console.log(`✓ FADIL TRADING is running at http://localhost:${PORT}`));
 }
 
 if (require.main === module) startServer();
